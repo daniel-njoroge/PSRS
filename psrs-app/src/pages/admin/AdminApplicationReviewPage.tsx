@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { api } from '../../services/api';
+import { api, getAssetUrl } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBadge } from '../../components/StatusBadge';
 import { ReceiptModal } from '../../components/ReceiptModal';
@@ -325,7 +325,7 @@ export const AdminApplicationReviewPage: React.FC = () => {
                         </div>
 
                         <a
-                          href={doc.file_path}
+                          href={getAssetUrl(doc.file_path)}
                           target="_blank"
                           rel="noreferrer"
                           className="btn btn-outline btn-sm"

@@ -1,4 +1,13 @@
-const API_BASE = '/api';
+const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, '');
+
+export function getAssetUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  const serverBase = API_BASE.endsWith('/api') ? API_BASE.slice(0, -4) : API_BASE;
+  return `${serverBase}${path.startsWith('/') ? path : `/${path}`}`;
+}
 
 export function getStoredToken(): string | null {
   return localStorage.getItem('psrs_auth_token');

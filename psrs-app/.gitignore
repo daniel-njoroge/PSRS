@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# Environment variables
+.env*
+!.env.example
+
+# Keep local deployment notes out of the repository
+README.md
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
