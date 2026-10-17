@@ -73,38 +73,6 @@ export const RequestTrackingPage: React.FC = () => {
         </div>
       </form>
       {error && <div className="gov-alert gov-alert-danger" role="alert" style={{ marginTop: 18 }}>{error}</div>}
-      <section className="demo-requests" aria-labelledby="demo-requests-title">
-        <div className="demo-requests-heading">
-          <div>
-            <h2 id="demo-requests-title">Try a demo request</h2>
-            <p>These sample requests are real records you can track. Choose one to see its status history.</p>
-          </div>
-        </div>
-        {demoError && <div className="gov-alert gov-alert-danger" role="alert">{demoError}</div>}
-        {demoRequests.length > 0 ? (
-          <div className="demo-request-list">
-            {demoRequests.map((demo) => (
-              <article className="gov-card demo-request-card" key={demo.reference_number}>
-                <div>
-                  <span className="demo-request-category">{demo.category}</span>
-                  <strong className="demo-request-reference">{demo.reference_number}</strong>
-                </div>
-                <StatusBadge status={demo.status} />
-                <button type="button" className="btn btn-outline demo-track-button" onClick={() => {
-                  setReference(demo.reference_number);
-                  void track(demo.reference_number);
-                }} disabled={loading}>
-                  Track this request
-                </button>
-              </article>
-            ))}
-          </div>
-        ) : demoLoading ? (
-          <p className="demo-requests-empty">Loading demo requests…</p>
-        ) : !demoError ? (
-          <p className="demo-requests-empty">Demo request samples aren’t loaded yet. Run <code>npm run seed</code> to add them.</p>
-        ) : null}
-      </section>
       {record && <section className="gov-card tracked-request" aria-labelledby="tracked-request-reference">
         <header className="tracked-request-header">
           <div className="tracked-request-identity">
@@ -150,6 +118,38 @@ export const RequestTrackingPage: React.FC = () => {
           </div>
         </div>
       </section>}
+      <section className="demo-requests" aria-labelledby="demo-requests-title">
+        <div className="demo-requests-heading">
+          <div>
+            <h2 id="demo-requests-title">Try a demo request</h2>
+            <p>These sample requests are real records you can track. Choose one to see its status history.</p>
+          </div>
+        </div>
+        {demoError && <div className="gov-alert gov-alert-danger" role="alert">{demoError}</div>}
+        {demoRequests.length > 0 ? (
+          <div className="demo-request-list">
+            {demoRequests.map((demo) => (
+              <article className="gov-card demo-request-card" key={demo.reference_number}>
+                <div>
+                  <span className="demo-request-category">{demo.category}</span>
+                  <strong className="demo-request-reference">{demo.reference_number}</strong>
+                </div>
+                <StatusBadge status={demo.status} />
+                <button type="button" className="btn btn-outline demo-track-button" onClick={() => {
+                  setReference(demo.reference_number);
+                  void track(demo.reference_number);
+                }} disabled={loading}>
+                  Track this request
+                </button>
+              </article>
+            ))}
+          </div>
+        ) : demoLoading ? (
+          <p className="demo-requests-empty">Loading demo requests…</p>
+        ) : !demoError ? (
+          <p className="demo-requests-empty">Demo request samples aren’t loaded yet. Run <code>npm run seed</code> to add them.</p>
+        ) : null}
+      </section>
     </div>
   );
 };

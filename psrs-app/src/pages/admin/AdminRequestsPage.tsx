@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Download } from 'lucide-react';
 import { api } from '../../services/api';
 import { REQUEST_CATEGORIES, type CitizenRequest, type RequestStatus } from '../../types';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -12,6 +13,11 @@ function buildQuery(status: string, category: string, search: string) {
   if (category !== 'All') query.set('category', category);
   if (search.trim()) query.set('search', search.trim());
   return query.toString();
+}
+
+function toCsvCell(value: string) {
+  const safeValue = /^[\t\r\n ]*[=+\-@]/.test(value) ? `'${value}` : value;
+  return `"${safeValue.replaceAll('"', '""')}"`;
 }
 
 export const AdminRequestsPage: React.FC = () => {
@@ -59,6 +65,26 @@ export const AdminRequestsPage: React.FC = () => {
     setParams(next);
   };
   const submitSearch = (event: React.FormEvent) => { event.preventDefault(); void load(search); };
+  const exportRequests = () => {
+    const columns = ['Reference', 'Citizen', 'Category', 'Location', 'Status', 'Submitted'];
+    const rows = requests.map((request) => [
+      request.reference_number,
+      request.citizen_name || '',
+      request.category,
+      request.location,
+      request.status,
+      new Date(request.created_at).toISOString()
+    ]);
+    const csv = [columns, ...rows].map((row) => row.map(toCsvCell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `service-requests-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   return (
     <section className="admin-request-inbox" aria-labelledby="admin-request-inbox-title">
@@ -67,7 +93,12 @@ export const AdminRequestsPage: React.FC = () => {
           <h2 id="admin-request-inbox-title">Request inbox</h2>
           <p>Review citizen reports and update them as work progresses.</p>
         </div>
-        <span className="admin-inbox-count">{loading ? 'Loading…' : `${requests.length} requests`}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span className="admin-inbox-count">{loading ? 'Loading…' : `${requests.length} requests`}</span>
+          <button type="button" className="btn btn-outline" onClick={exportRequests} disabled={loading || requests.length === 0}>
+            <Download size={16} aria-hidden="true" /> Export CSV
+          </button>
+        </div>
       </div>
       <div className="gov-card" style={{ marginBottom: 18 }}><div className="gov-card-body filter-controls" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <form className="search-form" onSubmit={submitSearch} style={{ display: 'flex', gap: 8, flex: '1 1 300px' }}><input className="form-control" aria-label="Search requests" placeholder="Search reference, citizen, location, or description" value={search} onChange={(event) => setSearch(event.target.value)} /><button className="btn btn-primary">Search</button></form>
