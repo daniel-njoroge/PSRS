@@ -1,90 +1,100 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { NotificationItem } from '../types';
 import { api } from '../services/api';
-import { useAuth } from './AuthContext';
+import { useAuth } from './useAuth';
+import { NotificationContext } from './notificationContextValue';
 
-interface NotificationContextType {
+interface NotificationData {
+  userId: string | null;
   notifications: NotificationItem[];
   unreadCount: number;
   loading: boolean;
-  refreshNotifications: () => Promise<void>;
-  markAsRead: (id: string) => Promise<void>;
-  markAllAsRead: () => Promise<void>;
 }
 
-const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
+const emptyData: NotificationData = { userId: null, notifications: [], unreadCount: 0, loading: false };
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [unreadCount, setUnreadCount] = useState<number>(0);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [data, setData] = useState<NotificationData>(emptyData);
+  const userId = user?.id || null;
+  const visibleData = data.userId === userId ? data : emptyData;
 
-  const fetchNotifications = async () => {
-    if (!user) {
-      setNotifications([]);
-      setUnreadCount(0);
-      return;
-    }
-
+  const refreshNotifications = async () => {
+    if (!userId) return;
+    setData((current) => ({ ...(current.userId === userId ? current : emptyData), userId, loading: true }));
     try {
-      setLoading(true);
-      const res = await api.get<{ success: boolean; unread_count: number; notifications: NotificationItem[] }>('/notifications');
-      if (res.success) {
-        setNotifications(res.notifications || []);
-        setUnreadCount(res.unread_count || 0);
-      }
-    } catch (err) {
-      console.error('Failed to fetch notifications:', err);
-    } finally {
-      setLoading(false);
+      const response = await api.get<{ success: boolean; unread_count: number; notifications: NotificationItem[] }>('/notifications');
+      setData({
+        userId,
+        notifications: response.notifications || [],
+        unreadCount: response.unread_count || 0,
+        loading: false
+      });
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error);
+      setData((current) => current.userId === userId ? { ...current, loading: false } : current);
     }
   };
 
   useEffect(() => {
-    fetchNotifications();
-  }, [user]);
+    if (!userId) return;
+    let active = true;
+    api.get<{ success: boolean; unread_count: number; notifications: NotificationItem[] }>('/notifications')
+      .then((response) => {
+        if (active) {
+          setData({
+            userId,
+            notifications: response.notifications || [],
+            unreadCount: response.unread_count || 0,
+            loading: false
+          });
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to fetch notifications:', error);
+        if (active) setData((current) => current.userId === userId ? { ...current, loading: false } : current);
+      });
+    return () => { active = false; };
+  }, [userId]);
 
   const markAsRead = async (id: string) => {
+    if (!userId) return;
     try {
       await api.patch(`/notifications/${id}/read`);
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: 1 } : n));
-      setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch (err) {
-      console.error('Failed to mark notification read:', err);
+      setData((current) => current.userId === userId ? {
+        ...current,
+        notifications: current.notifications.map((item) => item.id === id ? { ...item, is_read: 1 } : item),
+        unreadCount: Math.max(0, current.unreadCount - 1)
+      } : current);
+    } catch (error) {
+      console.error('Failed to mark notification read:', error);
     }
   };
 
   const markAllAsRead = async () => {
+    if (!userId) return;
     try {
       await api.patch('/notifications/read-all');
-      setNotifications(prev => prev.map(n => ({ ...n, is_read: 1 })));
-      setUnreadCount(0);
-    } catch (err) {
-      console.error('Failed to mark all notifications read:', err);
+      setData((current) => current.userId === userId ? {
+        ...current,
+        notifications: current.notifications.map((item) => ({ ...item, is_read: 1 })),
+        unreadCount: 0
+      } : current);
+    } catch (error) {
+      console.error('Failed to mark all notifications read:', error);
     }
   };
 
   return (
-    <NotificationContext.Provider
-      value={{
-        notifications,
-        unreadCount,
-        loading,
-        refreshNotifications: fetchNotifications,
-        markAsRead,
-        markAllAsRead,
-      }}
-    >
+    <NotificationContext.Provider value={{
+      notifications: visibleData.notifications,
+      unreadCount: visibleData.unreadCount,
+      loading: visibleData.loading,
+      refreshNotifications,
+      markAsRead,
+      markAllAsRead
+    }}>
       {children}
     </NotificationContext.Provider>
   );
 };
-
-export function useNotifications() {
-  const context = useContext(NotificationContext);
-  if (!context) {
-    throw new Error('useNotifications must be used within a NotificationProvider');
-  }
-  return context;
-}

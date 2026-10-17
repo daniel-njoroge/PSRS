@@ -16,8 +16,12 @@ dist-ssr
 .env*
 !.env.example
 
-# Keep local deployment notes out of the repository
-README.md
+# Local runtime data
+server/db/*.sqlite
+server/db/*.sqlite-shm
+server/db/*.sqlite-wal
+server/uploads/*
+!server/uploads/.gitkeep
 
 # Editor directories and files
 .vscode/*

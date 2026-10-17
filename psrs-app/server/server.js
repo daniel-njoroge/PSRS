@@ -1,21 +1,11 @@
 import express from 'express';
 import cors from 'cors';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { config } from './config/index.js';
 import { db } from './db/database.js';
 
 import authRoutes from './routes/authRoutes.js';
-import serviceRoutes from './routes/serviceRoutes.js';
-import applicationRoutes from './routes/applicationRoutes.js';
-import paymentRoutes from './routes/paymentRoutes.js';
-import statsRoutes from './routes/statsRoutes.js';
-import userRoutes from './routes/userRoutes.js';
+import requestRoutes from './routes/requestRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
-import helpRoutes from './routes/helpRoutes.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -32,13 +22,8 @@ app.use('/uploads', express.static(config.uploadsDir));
 
 // API Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/services', serviceRoutes);
-app.use('/api/applications', applicationRoutes);
-app.use('/api/payments', paymentRoutes);
-app.use('/api/stats', statsRoutes);
-app.use('/api/users', userRoutes);
+app.use('/api/requests', requestRoutes);
 app.use('/api/notifications', notificationRoutes);
-app.use('/api/help', helpRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -46,7 +31,7 @@ app.get('/api/health', (req, res) => {
     const userCount = db.get('SELECT COUNT(id) as count FROM users');
     return res.json({
       status: 'operational',
-      system: 'Kenyan Public Service Request System (PSRS)',
+      system: 'PSRS Local Service Requests Demo',
       version: '1.0.0',
       database: 'connected (node:sqlite)',
       registered_users: userCount ? userCount.count : 0,
@@ -66,7 +51,7 @@ app.use('/api', (req, res) => {
 app.use((err, req, res, next) => {
   console.error('Unhandled server error:', err);
   if (err.name === 'MulterError') {
-    return res.status(400).json({ success: false, message: `Document upload error: ${err.message}` });
+    return res.status(400).json({ success: false, message: `Image upload error: ${err.message}` });
   }
   return res.status(err.status || 500).json({
     success: false,

@@ -1,262 +1,57 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import { NationalEmblem } from '../../components/NationalEmblem';
-import { KENYA_COUNTIES } from '../../utils/kenyaCounties';
-import { ShieldCheck, AlertCircle, ArrowRight, UserCheck } from 'lucide-react';
+import { useAuth } from '../../context/useAuth';
 
 export const RegisterPage: React.FC = () => {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const [form, setForm] = useState({ full_name: '', email: '', phone: '', password: '', confirm_password: '' });
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const [form, setForm] = useState({
-    full_name: '',
-    national_id: '',
-    email: '',
-    phone: '',
-    county: 'Nairobi',
-    sub_county: '',
-    password: '',
-    confirm_password: '',
-    agree_charter: false,
-  });
-
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    // Client-side validations
-    if (!/^\d{6,10}$/.test(form.national_id.trim())) {
-      setError('National ID must be between 6 and 10 digits.');
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+    if (form.password.length < 8) {
+      setError('Use a password with at least 8 characters.');
       return;
     }
-
-    if (!/^(?:\+254|0)[17]\d{8}$/.test(form.phone.trim())) {
-      setError('Invalid Kenyan mobile number. Example: 0712345678 or +254712345678');
-      return;
-    }
-
-    if (form.password.length < 6) {
-      setError('Password must be at least 6 characters long.');
-      return;
-    }
-
     if (form.password !== form.confirm_password) {
-      setError('Password confirmation does not match.');
+      setError('The passwords do not match.');
       return;
     }
-
-    if (!form.agree_charter) {
-      setError('You must confirm statutory declaration and data privacy terms.');
-      return;
-    }
-
     try {
-      setLoading(true);
+      setSubmitting(true);
       await register({
-        full_name: form.full_name,
-        national_id: form.national_id,
-        email: form.email,
-        phone: form.phone,
-        county: form.county,
-        sub_county: form.sub_county,
-        password: form.password,
+        full_name: form.full_name.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        password: form.password
       });
-
       navigate('/citizen/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Registration failed. Please review your details.');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not create your account.');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
   return (
-    <div style={{ padding: '48px 0 80px 0' }}>
-      <div className="gov-container" style={{ maxWidth: '640px' }}>
-        {/* Title */}
-        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '48px', height: '48px', background: '#0a2540', borderRadius: '4px', marginBottom: '10px', border: '1px solid #334155' }}>
-            <NationalEmblem size={28} />
-          </div>
-          <h1 style={{ fontSize: '24px', fontWeight: 800, color: 'var(--gov-navy-900)' }}>
-            Register Citizen Account
-          </h1>
-          <p style={{ color: '#64748b', fontSize: '14px', marginTop: '4px' }}>
-            Create an official public service portal profile linked to your National ID
-          </p>
+    <div className="gov-container page-container" style={{ maxWidth: 560, padding: '44px 0 64px' }}>
+      <h1 style={{ color: 'var(--gov-navy-900)', fontSize: 28, fontWeight: 800 }}>Create a citizen account</h1>
+      <p style={{ color: '#64748b', margin: '8px 0 22px' }}>Use your account to submit and track service requests.</p>
+      <form className="gov-card" onSubmit={submit}>
+        <div className="gov-card-body" style={{ display: 'grid', gap: 16, padding: 24 }}>
+          {error && <div className="gov-alert gov-alert-danger" role="alert">{error}</div>}
+          <label><span className="form-label">Name <b aria-hidden="true">*</b></span><input className="form-control" value={form.full_name} maxLength={120} onChange={(event) => setForm({ ...form, full_name: event.target.value })} autoComplete="name" required /></label>
+          <label><span className="form-label">Email <b aria-hidden="true">*</b></span><input className="form-control" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} autoComplete="email" required /></label>
+          <label><span className="form-label">Phone (optional)</span><input className="form-control" type="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} autoComplete="tel" placeholder="0712345678" /></label>
+          <label><span className="form-label">Password <b aria-hidden="true">*</b></span><input className="form-control" type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} autoComplete="new-password" minLength={8} required /></label>
+          <label><span className="form-label">Confirm password <b aria-hidden="true">*</b></span><input className="form-control" type="password" value={form.confirm_password} onChange={(event) => setForm({ ...form, confirm_password: event.target.value })} autoComplete="new-password" minLength={8} required /></label>
+          <button className="btn btn-primary" type="submit" disabled={submitting}>{submitting ? 'Creating account…' : 'Create account'}</button>
+          <p style={{ margin: 0, textAlign: 'center', fontSize: 14 }}>Already registered? <Link to="/login">Sign in</Link></p>
         </div>
-
-        {/* Form Card */}
-        <div className="gov-card" style={{ borderTop: '4px solid #006644' }}>
-          <div className="gov-card-body" style={{ padding: '28px' }}>
-            {error && (
-              <div className="gov-alert gov-alert-danger" style={{ marginBottom: '20px' }}>
-                <AlertCircle size={18} />
-                <div style={{ fontSize: '13px' }}>{error}</div>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit}>
-              <div className="form-group">
-                <label className="form-label">
-                  Full Legal Name (as per National ID) <span className="required">*</span>
-                </label>
-                <input
-                  type="text"
-                  className="form-control"
-                  required
-                  placeholder="e.g. Samuel Njoroge Kamau"
-                  value={form.full_name}
-                  onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <div className="form-group">
-                  <label className="form-label">
-                    Kenyan National ID No. <span className="required">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    required
-                    placeholder="e.g. 29481024"
-                    value={form.national_id}
-                    onChange={(e) => setForm({ ...form, national_id: e.target.value })}
-                  />
-                  <div className="form-hint">6 to 10 digits as shown on ID card</div>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">
-                    Kenyan Mobile Number <span className="required">*</span>
-                  </label>
-                  <input
-                    type="tel"
-                    className="form-control"
-                    required
-                    placeholder="e.g. 0712345678"
-                    value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  />
-                  <div className="form-hint">Used for M-Pesa & SMS alerts</div>
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">
-                  Email Address <span className="required">*</span>
-                </label>
-                <input
-                  type="email"
-                  className="form-control"
-                  required
-                  placeholder="e.g. citizen@example.ke"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <div className="form-group">
-                  <label className="form-label">
-                    County of Residence <span className="required">*</span>
-                  </label>
-                  <select
-                    className="form-control"
-                    required
-                    value={form.county}
-                    onChange={(e) => setForm({ ...form, county: e.target.value })}
-                  >
-                    {KENYA_COUNTIES.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">
-                    Sub-County / Constituency <span className="required">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    required
-                    placeholder="e.g. Westlands / Starehe"
-                    value={form.sub_county}
-                    onChange={(e) => setForm({ ...form, sub_county: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <div className="form-group">
-                  <label className="form-label">
-                    Account Password <span className="required">*</span>
-                  </label>
-                  <input
-                    type="password"
-                    className="form-control"
-                    required
-                    placeholder="Minimum 6 characters"
-                    value={form.password}
-                    onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">
-                    Confirm Password <span className="required">*</span>
-                  </label>
-                  <input
-                    type="password"
-                    className="form-control"
-                    required
-                    placeholder="Repeat password"
-                    value={form.confirm_password}
-                    onChange={(e) => setForm({ ...form, confirm_password: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '22px' }}>
-                <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer', fontSize: '13px', color: '#475569' }}>
-                  <input
-                    type="checkbox"
-                    checked={form.agree_charter}
-                    onChange={(e) => setForm({ ...form, agree_charter: e.target.checked })}
-                    style={{ marginTop: '2px' }}
-                  />
-                  <span>
-                    I solemnly declare that the identification details supplied are authentic and agree to the Public Service Request System terms and Kenyan Data Protection regulations.
-                  </span>
-                </label>
-              </div>
-
-              <button
-                type="submit"
-                className="btn btn-primary"
-                style={{ width: '100%', padding: '11px', fontSize: '15px' }}
-                disabled={loading}
-              >
-                <span>{loading ? 'Registering Citizen Profile...' : 'Complete Citizen Registration'}</span>
-                <ArrowRight size={16} />
-              </button>
-            </form>
-
-            <div style={{ borderTop: '1px solid var(--gov-slate-200)', marginTop: '24px', paddingTop: '16px', textAlign: 'center', fontSize: '13px', color: '#475569' }}>
-              Already have an account?{' '}
-              <Link to="/login" style={{ color: '#006644', fontWeight: 700, textDecoration: 'underline' }}>
-                Sign In Here
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
+      </form>
     </div>
   );
 };

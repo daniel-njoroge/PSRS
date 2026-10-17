@@ -20,6 +20,67 @@ export const sqliteDb = new DatabaseSync(config.dbPath);
 sqliteDb.exec('PRAGMA journal_mode = WAL;');
 sqliteDb.exec('PRAGMA foreign_keys = ON;');
 
+function migrateRequestCategories() {
+  const table = sqliteDb.prepare(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'service_requests'"
+  ).get();
+  if (!table?.sql.includes("'Water & Sanitation'") && !table?.sql.includes("'Waste & Sanitation'")) {
+    return;
+  }
+
+  sqliteDb.exec('PRAGMA foreign_keys = OFF; PRAGMA legacy_alter_table = ON;');
+  let transactionStarted = false;
+  try {
+    sqliteDb.exec('BEGIN IMMEDIATE;');
+    transactionStarted = true;
+    sqliteDb.exec(`
+      ALTER TABLE service_requests RENAME TO service_requests_legacy;
+
+      CREATE TABLE service_requests (
+        id TEXT PRIMARY KEY,
+        reference_number TEXT NOT NULL UNIQUE,
+        citizen_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        category TEXT NOT NULL,
+        location TEXT NOT NULL,
+        description TEXT NOT NULL,
+        image_path TEXT,
+        status TEXT NOT NULL DEFAULT 'Pending' CHECK(status IN ('Pending', 'In Progress', 'Resolved')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      INSERT INTO service_requests
+        (id, reference_number, citizen_id, category, location, description, image_path, status, created_at, updated_at)
+      SELECT id, reference_number, citizen_id,
+        CASE category
+          WHEN 'Water & Sanitation' THEN 'Water Services'
+          WHEN 'Waste & Sanitation' THEN 'Waste Management'
+          ELSE category
+        END,
+        location, description, image_path, status, created_at, updated_at
+      FROM service_requests_legacy;
+
+      DROP TABLE service_requests_legacy;
+    `);
+    sqliteDb.exec('COMMIT;');
+    transactionStarted = false;
+  } catch (error) {
+    if (transactionStarted) sqliteDb.exec('ROLLBACK;');
+    throw error;
+  } finally {
+    sqliteDb.exec('PRAGMA legacy_alter_table = OFF; PRAGMA foreign_keys = ON;');
+  }
+  sqliteDb.exec(`
+    CREATE INDEX IF NOT EXISTS idx_requests_citizen ON service_requests(citizen_id);
+    CREATE INDEX IF NOT EXISTS idx_requests_status ON service_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_requests_created ON service_requests(created_at);
+  `);
+  const violations = sqliteDb.prepare('PRAGMA foreign_key_check').all();
+  if (violations.length) {
+    throw new Error('Request category migration left invalid database relationships.');
+  }
+}
+
 // Initialize tables
 export function initSchema() {
   sqliteDb.exec(`
@@ -27,92 +88,13 @@ export function initSchema() {
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       full_name TEXT NOT NULL,
-      national_id TEXT UNIQUE NOT NULL,
       email TEXT UNIQUE NOT NULL,
-      phone TEXT NOT NULL,
+      phone TEXT,
       password_hash TEXT NOT NULL,
-      role TEXT NOT NULL CHECK(role IN ('citizen', 'staff', 'admin')),
-      department TEXT,
-      county TEXT NOT NULL,
-      sub_county TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('citizen', 'admin')),
       status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended')),
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
-    );
-
-    -- Public Services Catalog
-    CREATE TABLE IF NOT EXISTS services (
-      id TEXT PRIMARY KEY,
-      slug TEXT UNIQUE NOT NULL,
-      name TEXT NOT NULL,
-      category TEXT NOT NULL,
-      department TEXT NOT NULL,
-      description TEXT NOT NULL,
-      eligibility TEXT NOT NULL,
-      required_documents TEXT NOT NULL, -- JSON array
-      fee_kes REAL NOT NULL DEFAULT 0.0,
-      processing_time_days INTEGER NOT NULL DEFAULT 1,
-      instructions TEXT NOT NULL,
-      form_fields TEXT NOT NULL, -- JSON array of dynamic fields
-      is_active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
-    -- Service Applications
-    CREATE TABLE IF NOT EXISTS applications (
-      id TEXT PRIMARY KEY,
-      reference_number TEXT UNIQUE NOT NULL,
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      service_id TEXT NOT NULL REFERENCES services(id),
-      status TEXT NOT NULL CHECK(status IN ('Draft', 'Submitted', 'Under Review', 'Action Required', 'Approved', 'Rejected', 'Completed')),
-      form_data TEXT NOT NULL, -- JSON object
-      assigned_staff_id TEXT REFERENCES users(id) ON DELETE SET NULL,
-      action_required_note TEXT,
-      rejection_reason TEXT,
-      approval_remarks TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
-    -- Application Uploaded Documents
-    CREATE TABLE IF NOT EXISTS application_documents (
-      id TEXT PRIMARY KEY,
-      application_id TEXT NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
-      document_name TEXT NOT NULL,
-      original_filename TEXT NOT NULL,
-      stored_filename TEXT NOT NULL,
-      file_path TEXT NOT NULL,
-      file_size_bytes INTEGER NOT NULL,
-      mime_type TEXT NOT NULL,
-      uploaded_at TEXT NOT NULL
-    );
-
-    -- Status Transition History (Immutable Audit)
-    CREATE TABLE IF NOT EXISTS application_status_history (
-      id TEXT PRIMARY KEY,
-      application_id TEXT NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
-      previous_status TEXT,
-      new_status TEXT NOT NULL,
-      changed_by_user_id TEXT REFERENCES users(id),
-      remarks TEXT,
-      timestamp TEXT NOT NULL
-    );
-
-    -- Payments Table (Real ledger of fees & simulated gateway records)
-    CREATE TABLE IF NOT EXISTS payments (
-      id TEXT PRIMARY KEY,
-      reference_number TEXT UNIQUE NOT NULL,
-      application_id TEXT NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
-      user_id TEXT NOT NULL REFERENCES users(id),
-      amount_kes REAL NOT NULL,
-      payment_method TEXT NOT NULL CHECK(payment_method IN ('mpesa', 'card', 'bank_transfer')),
-      phone_number TEXT,
-      transaction_reference TEXT UNIQUE NOT NULL,
-      status TEXT NOT NULL CHECK(status IN ('Pending', 'Completed', 'Failed')),
-      is_simulated INTEGER NOT NULL DEFAULT 1,
-      paid_at TEXT,
-      created_at TEXT NOT NULL
     );
 
     -- Notifications
@@ -123,19 +105,7 @@ export function initSchema() {
       message TEXT NOT NULL,
       link TEXT,
       is_read INTEGER NOT NULL DEFAULT 0,
-      type TEXT NOT NULL CHECK(type IN ('status_update', 'payment', 'action_required', 'system')),
-      created_at TEXT NOT NULL
-    );
-
-    -- Announcements
-    CREATE TABLE IF NOT EXISTS announcements (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      summary TEXT NOT NULL,
-      content TEXT NOT NULL,
-      priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('normal', 'important', 'urgent')),
-      is_published INTEGER NOT NULL DEFAULT 1,
-      created_by TEXT REFERENCES users(id),
+      type TEXT NOT NULL CHECK(type IN ('status_update', 'system')),
       created_at TEXT NOT NULL
     );
 
@@ -152,39 +122,39 @@ export function initSchema() {
       timestamp TEXT NOT NULL
     );
 
-    -- FAQs Table
-    CREATE TABLE IF NOT EXISTS faqs (
+    -- Indexes for high performance lookup
+    CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, is_read);
+    CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp);
+
+    CREATE TABLE IF NOT EXISTS service_requests (
       id TEXT PRIMARY KEY,
+      reference_number TEXT NOT NULL UNIQUE,
+      citizen_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       category TEXT NOT NULL,
-      question TEXT NOT NULL,
-      answer TEXT NOT NULL,
-      display_order INTEGER NOT NULL DEFAULT 0
+      location TEXT NOT NULL,
+      description TEXT NOT NULL,
+      image_path TEXT,
+      status TEXT NOT NULL DEFAULT 'Pending' CHECK(status IN ('Pending', 'In Progress', 'Resolved')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     );
 
-    -- Support Inquiries
-    CREATE TABLE IF NOT EXISTS support_tickets (
+    CREATE TABLE IF NOT EXISTS request_status_history (
       id TEXT PRIMARY KEY,
-      ticket_number TEXT UNIQUE NOT NULL,
-      user_id TEXT REFERENCES users(id),
-      name TEXT NOT NULL,
-      email TEXT NOT NULL,
-      phone TEXT,
-      subject TEXT NOT NULL,
-      message TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'Open' CHECK(status IN ('Open', 'In Progress', 'Resolved')),
+      request_id TEXT NOT NULL REFERENCES service_requests(id) ON DELETE CASCADE,
+      previous_status TEXT CHECK(previous_status IS NULL OR previous_status IN ('Pending', 'In Progress', 'Resolved')),
+      new_status TEXT NOT NULL CHECK(new_status IN ('Pending', 'In Progress', 'Resolved')),
+      changed_by_user_id TEXT REFERENCES users(id),
+      note TEXT,
       created_at TEXT NOT NULL
     );
 
-    -- Indexes for high performance lookup
-    CREATE INDEX IF NOT EXISTS idx_apps_user ON applications(user_id);
-    CREATE INDEX IF NOT EXISTS idx_apps_status ON applications(status);
-    CREATE INDEX IF NOT EXISTS idx_apps_service ON applications(service_id);
-    CREATE INDEX IF NOT EXISTS idx_apps_ref ON applications(reference_number);
-    CREATE INDEX IF NOT EXISTS idx_payments_app ON payments(application_id);
-    CREATE INDEX IF NOT EXISTS idx_payments_ref ON payments(reference_number);
-    CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, is_read);
-    CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_requests_citizen ON service_requests(citizen_id);
+    CREATE INDEX IF NOT EXISTS idx_requests_status ON service_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_requests_created ON service_requests(created_at);
+    CREATE INDEX IF NOT EXISTS idx_request_history_request ON request_status_history(request_id, created_at);
   `);
+  migrateRequestCategories();
 }
 
 // Database helper wrapper
@@ -204,8 +174,19 @@ export const db = {
   },
   exec(sql) {
     return sqliteDb.exec(sql);
+  },
+  transaction(callback) {
+    sqliteDb.exec('BEGIN IMMEDIATE');
+    try {
+      const result = callback();
+      sqliteDb.exec('COMMIT');
+      return result;
+    } catch (err) {
+      sqliteDb.exec('ROLLBACK');
+      throw err;
+    }
   }
 };
 
-// Initialize schema on load
+// Initialize schema on load without modifying existing citizen data.
 initSchema();

@@ -15,7 +15,7 @@ export function authenticateToken(req, res, next) {
       return res.status(403).json({ success: false, message: 'Invalid or expired session. Please log in again.' });
     }
 
-    const user = db.get('SELECT id, full_name, national_id, email, phone, role, department, county, sub_county, status FROM users WHERE id = ?', [decoded.id]);
+    const user = db.get('SELECT id, full_name, email, phone, role, status FROM users WHERE id = ?', [decoded.id]);
 
     if (!user) {
       return res.status(404).json({ success: false, message: 'User account not found.' });
@@ -24,27 +24,11 @@ export function authenticateToken(req, res, next) {
     if (user.status === 'suspended') {
       return res.status(403).json({ success: false, message: 'Account is suspended. Please contact the administrator.' });
     }
+    if (!['citizen', 'admin'].includes(user.role)) {
+      return res.status(403).json({ success: false, message: 'This account role is not supported.' });
+    }
 
     req.user = user;
-    next();
-  });
-}
-
-export function optionalAuth(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return next();
-  }
-
-  jwt.verify(token, config.jwtSecret, (err, decoded) => {
-    if (!err && decoded?.id) {
-      const user = db.get('SELECT id, full_name, national_id, email, phone, role, department, county, sub_county, status FROM users WHERE id = ?', [decoded.id]);
-      if (user && user.status !== 'suspended') {
-        req.user = user;
-      }
-    }
     next();
   });
 }

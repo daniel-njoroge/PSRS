@@ -11,6 +11,7 @@
     "client": "vite",
     "server": "node server/server.js",
     "seed": "node server/db/seed.js",
+    "test": "node --test server/tests/*.test.js",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
