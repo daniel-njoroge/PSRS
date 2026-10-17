@@ -1,0 +1,11 @@
+{
+  "name": "psrs-root",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "npm --prefix psrs-app run dev",
+    "build": "npm --prefix psrs-app run build",
+    "server": "npm --prefix psrs-app run server",
+    "seed": "npm --prefix psrs-app run seed"
+  }
+}
